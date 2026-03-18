@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
 import socket from "./socket";
+import { copyToClipboard } from "./utils/clipboard";
 import QRDisplay from "./components/QRDisplay";
 import ClipboardPanel from "./components/ClipboardPanel";
 
@@ -177,10 +178,10 @@ export default function App() {
 function HistoryLog({ entries }) {
   const copyEntry = async (text) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyToClipboard(text);
       toast.success("Copied!", { icon: "✅" });
     } catch {
-      toast.error("Clipboard denied.");
+      toast.error("Could not copy — try selecting manually.");
     }
   };
 

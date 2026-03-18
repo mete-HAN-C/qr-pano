@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
+import { copyToClipboard } from "../utils/clipboard";
 
 /**
  * ClipboardPanel
@@ -40,10 +41,10 @@ export default function ClipboardPanel({ incomingText = "", onSend, isConnected 
       return;
     }
     try {
-      await navigator.clipboard.writeText(trimmed);
+      await copyToClipboard(trimmed);
       toast.success("Copied to clipboard!", { icon: "✅" });
     } catch {
-      toast.error("Clipboard access denied. Please allow it in browser settings.");
+      toast.error("Could not copy — try selecting text manually.");
     }
   };
 
