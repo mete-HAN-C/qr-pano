@@ -104,7 +104,8 @@ app.post("/api/upload", (req, res, next) => {
     }
 
     const token = randomUUID();
-    const { originalname: filename, mimetype, size, buffer } = req.file;
+    const filename = Buffer.from(req.file.originalname, "latin1").toString("utf8");
+    const { mimetype, size, buffer } = req.file;
 
     // TTL guard — evict from RAM if nobody downloads within FILE_TTL_MS
     const timer = setTimeout(() => {
