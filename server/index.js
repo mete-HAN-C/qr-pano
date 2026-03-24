@@ -42,12 +42,20 @@ const LOCAL_IP = getLocalIP();
 /** Maximum upload size in bytes (default: 500 MB, override with MAX_FILE_SIZE env var) */
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || String(500 * 1024 * 1024), 10);
 
+/**
+ * TTL for unclaimed files (ms). If the receiver never clicks "Save", the
+ * buffer is evicted from RAM after this delay to prevent memory leaks.
+ * Default: 10 minutes. Override with FILE_TTL_MS env var.
+ */
+const FILE_TTL_MS = parseInt(process.env.FILE_TTL_MS || String(10 * 60 * 1000), 10);
+
 // ─── Zero-persistence file store (RAM only) ──────────────────────────────────
 /**
- * Map<token: string, { buffer: Buffer, filename: string, mimetype: string, size: number }>
+ * Map<token, { buffer, filename, mimetype, size, timer }>
  *
- * Each entry is a one-shot: it is deleted immediately after the first
- * successful download, so it never accumulates and can never be retrieved twice.
+ * One-shot: deleted immediately after the first successful download.
+ * TTL guard: if the receiver never downloads, the buffer is evicted from RAM
+ * after FILE_TTL_MS (default 10 min) to prevent memory leaks.
  */
 const fileStore = new Map();
 
@@ -98,10 +106,20 @@ app.post("/api/upload", (req, res, next) => {
     const token = randomUUID();
     const { originalname: filename, mimetype, size, buffer } = req.file;
 
-    // Store in RAM — never touches the disk
-    fileStore.set(token, { buffer, filename, mimetype, size });
+    // TTL guard — evict from RAM if nobody downloads within FILE_TTL_MS
+    const timer = setTimeout(() => {
+      if (fileStore.has(token)) {
+        fileStore.delete(token);
+        console.log(`  🗑️  File expired (TTL)  [${filename}]  token=${token}`);
+      }
+    }, FILE_TTL_MS);
+    // Allow Node.js to exit cleanly even if the timer is still pending
+    timer.unref();
 
-    console.log(`  📤 File uploaded   [${filename}] ${(size / 1024).toFixed(1)} KB  token=${token}`);
+    // Store in RAM — never touches the disk
+    fileStore.set(token, { buffer, filename, mimetype, size, timer });
+
+    console.log(`  📤 File uploaded   [${filename}] ${(size / 1024).toFixed(1)} KB  token=${token}  TTL=${FILE_TTL_MS / 1000}s`);
 
     // Broadcast to all other connected sockets
     io.emit("file-available", { token, filename, size, mimetype });
@@ -126,7 +144,10 @@ app.get("/api/download/:token", (req, res) => {
     return res.status(404).json({ error: "File not found or already downloaded." });
   }
 
-  const { buffer, filename, mimetype, size } = entry;
+  const { buffer, filename, mimetype, size, timer } = entry;
+
+  // Cancel the TTL eviction timer — download is happening now
+  clearTimeout(timer);
 
   // One-shot: delete immediately before sending so concurrent requests also 404
   fileStore.delete(req.params.token);
