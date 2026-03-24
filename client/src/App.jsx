@@ -4,6 +4,8 @@ import socket from "./socket";
 import { copyToClipboard } from "./utils/clipboard";
 import QRDisplay from "./components/QRDisplay";
 import ClipboardPanel from "./components/ClipboardPanel";
+import FileTransferPanel from "./components/FileTransferPanel";
+import IncomingFile from "./components/IncomingFile";
 
 /* ─── App ─────────────────────────────────────────────────────────────────── */
 
@@ -13,6 +15,7 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [incomingText, setIncomingText] = useState("");  // last text from other device
   const [history, setHistory]          = useState([]);   // received message log
+  const [incomingFile, setIncomingFile] = useState(null); // { token, filename, size, mimetype }
 
   /* ── 1. Fetch server info → build QR URL → connect socket ── */
   useEffect(() => {
@@ -69,16 +72,23 @@ export default function App() {
       toast("New text from other device!", { icon: "📱", duration: 2500 });
     }
 
+    function onFileAvailable(payload) {
+      setIncomingFile(payload);
+      toast("Incoming file from other device!", { icon: "📦", duration: 3000 });
+    }
+
     socket.on("connect",          onConnect);
     socket.on("disconnect",       onDisconnect);
     socket.on("connect_error",    onConnectError);
     socket.on("clipboard-update", onClipboardUpdate);
+    socket.on("file-available",   onFileAvailable);
 
     return () => {
       socket.off("connect",          onConnect);
       socket.off("disconnect",       onDisconnect);
       socket.off("connect_error",    onConnectError);
       socket.off("clipboard-update", onClipboardUpdate);
+      socket.off("file-available",   onFileAvailable);
     };
   }, []);
 
@@ -146,7 +156,7 @@ export default function App() {
           <QRDisplay url={qrUrl} size={192} />
         </div>
 
-        {/* Right column — clipboard + history */}
+        {/* Right column — clipboard + file transfer + history */}
         <div className="flex-1 flex flex-col gap-5 min-w-0 animate-slide-up"
           style={{ animationDelay: "80ms" }}
         >
@@ -155,6 +165,16 @@ export default function App() {
             onSend={handleSend}
             isConnected={isConnected}
           />
+
+          <FileTransferPanel isConnected={isConnected} />
+
+          {/* Incoming file notification */}
+          {incomingFile && (
+            <IncomingFile
+              file={incomingFile}
+              onDismiss={() => setIncomingFile(null)}
+            />
+          )}
 
           {/* History log */}
           {history.length > 0 && (
